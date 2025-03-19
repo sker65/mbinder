@@ -54,6 +54,7 @@ def parse_options(args=[]):
                         help='On which message to stop, not included')
     parser.add_argument('-s', '--sender', default='', help='Filter messages by sender email domain')
     parser.add_argument('-r', '--recipient', default='', help='Filter messages by sender email domain')
+    parser.add_argument('-f', '--filename', default='', help='Filter attachments by name / pattern')
     return parser.parse_args(args)
 
 
@@ -179,7 +180,9 @@ def save(extractor, mid, part, attachments_counter, inline_image=False):
         filename = '%s %s' % (mid, filename)
 
         previous_file_paths = attachments_counter['file_paths']
-
+        if options.filename.length > 0:
+            if not filename.txt.endswith(options.filename):
+                return
         try:
             write_to_disk(part, resolve_name_conflicts(
                 destination_folder, filename,
