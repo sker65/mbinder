@@ -39,7 +39,8 @@ import traceback
 from email.header import decode_header
 import argparse
 import sys
-
+import email.utils
+from datetime import datetime
 
 def parse_options(args=[]):
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -158,7 +159,7 @@ def write_to_disk(part, file_path):
         f.write(part.get_payload(decode=True))
 
 
-def save(extractor, mid, part, attachments_counter, inline_image=False):
+def save(extractor, mid, part, attachments_counter, inline_image, date=None):
     extractor.increment_total()
 
     try:
@@ -177,11 +178,15 @@ def save(extractor, mid, part, attachments_counter, inline_image=False):
             mid)
 
         filename = filter_fn_characters(filename)
-        filename = '%s %s' % (mid, filename)
+        if date:
+            filename = '%s %s' % ( date.strftime('%Y-%m-%d'), filename)
+        else:
+            filename = '%s-%s' % (mid, filename)
 
         previous_file_paths = attachments_counter['file_paths']
-        if options.filename.length > 0:
-            if not filename.txt.endswith(options.filename):
+        if len(extractor.options.filename) > 0:
+            if not filename.endswith(extractor.options.filename):
+                print('Skipping %s %s.' % (mid, filename))
                 return
         try:
             write_to_disk(part, resolve_name_conflicts(
@@ -202,14 +207,14 @@ def save(extractor, mid, part, attachments_counter, inline_image=False):
         extractor.increment_failed()
 
 
-def check_part(extractor, mid, part, attachments_counter):
+def check_part(extractor, mid, part, attachments_counter, date=None):
     mime_type = part.get_content_type()
     if part.is_multipart():
         for p in part.get_payload():
             check_part(extractor, mid, p, attachments_counter)
     elif (part.get_content_disposition() == 'attachment') \
             or ((part.get_content_disposition() != 'inline') and (part.get_filename() is not None)):
-        save(extractor, mid, part, attachments_counter)
+        save(extractor, mid, part, attachments_counter, False, date)
     elif (mime_type.startswith('application/') and not mime_type == 'application/javascript') \
             or mime_type.startswith('model/') \
             or mime_type.startswith('audio/') \
@@ -219,9 +224,9 @@ def check_part(extractor, mid, part, attachments_counter):
             print('Extracting inline part... ' + message_id_content_type)
         else:
             print('Other Content-disposition... ' + message_id_content_type)
-        save(extractor, mid, part, attachments_counter)
+        save(extractor, mid, part, attachments_counter, False, date)
     elif (not extractor.options.no_inline_images) and mime_type.startswith('image/'):
-        save(extractor, mid, part, attachments_counter, True)
+        save(extractor, mid, part, attachments_counter, True, date)
 
 
 def process_message(extractor, mid):
@@ -237,6 +242,20 @@ def process_message(extractor, mid):
         if extractor.options.recipient.lower() not in recipient:
             return
 
+    date_str = msg['date']
+    msgdate = None
+    if date_str:
+        # Parse the date string to datetime object
+        date_tuple = email.utils.parsedate_tz(date_str)
+        if date_tuple:
+            # Convert to datetime object
+            msgdate = datetime.fromtimestamp(email.utils.mktime_tz(date_tuple))
+        else:
+            msgdate = None
+    else:
+        msgdate = None
+    print('Processing message %s from %s' % (mid, msgdate.strftime('%Y-%m-%d') ))
+
     if msg.is_multipart():
         attachments_counter = {
             'value': 0,
@@ -244,7 +263,7 @@ def process_message(extractor, mid):
             'file_paths': []
         }
         for part in msg.get_payload():
-            check_part(extractor, mid, part, attachments_counter)
+            check_part(extractor, mid, part, attachments_counter, msgdate)
 
 
 def extract_mbox_file(options):
